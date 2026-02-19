@@ -1,0 +1,20 @@
+// Sample blueprint for migrating these tests into an AOSP tree.
+// Adjust module names/dependencies for your branch.
+
+android_test {
+    name: "ContactsCacheIntegrationTests",
+    manifest: "src/main/AndroidManifest.xml",
+    srcs: [
+        "src/androidTest/java/**/*.java",
+        "../src/main/java/com/autotech/aaos/contactscache/core/**/*.java",
+        "../src/main/java/com/autotech/aaos/contactscache/android/**/*.java",
+    ],
+    static_libs: [
+        "androidx.test.ext.junit",
+        "androidx.test.runner",
+        "androidx.test.rules",
+        "androidx.test.core",
+    ],
+    sdk_version: "test_current",
+    test_suites: ["general-tests"],
+}

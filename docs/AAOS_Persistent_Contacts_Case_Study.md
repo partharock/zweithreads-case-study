@@ -1,0 +1,172 @@
+# Case Study Report: Persistent Cache for Synced Contacts in Automotive AOSP (AAOS)
+
+## Candidate Profile Context
+
+Prepared for an app engineer transitioning from Samsung system applications (Settings, Notifications, Wallpaper) into AAOS infotainment contact-sync persistence architecture.
+
+## Problem Statement
+
+In the current infotainment stack, synced contacts from Bluetooth/USB are memory-only. Contacts are lost on reboot or connection drops, forcing expensive re-sync and causing poor UX.
+
+## Objectives
+
+1. Persist synced contacts across system restarts.
+2. Serve contacts quickly without full re-sync.
+3. Keep cache aligned with live phone data.
+4. Protect user privacy and enforce access control.
+
+## 1) Analysis of current mechanism
+
+### Typical current pattern (in-memory-only)
+
+- Source adapters ingest contacts from PBAP/USB.
+- Contact objects are held in service memory.
+- Query APIs read from in-memory map/list.
+- On reboot/process death/disconnect, state is lost.
+
+### Gaps
+
+- No durability.
+- Slow cold start due to mandatory resync.
+- Limited consistency controls (version ordering, deletion handling).
+- No migration strategy for platform updates.
+
+## 2) Strategies considered
+
+| Approach | Storage model | Strengths | Weaknesses | Verdict |
+|---|---|---|---|---|
+| Approach 1 | SQLite + WAL + sync metadata | Fast indexed reads, transactional safety, scalable updates, best AOSP fit | Requires schema/migration work | **Recommended** |
+| Approach 2 | Per-device JSON snapshot files | Simple to implement | Full rewrites, weak query performance, no transactions | Prototype only |
+| Approach 3 | Append-only event log | Good audit trail | Replay/compaction complexity, slower reads | Niche use |
+
+### Folder mapping in this repository
+
+- `approaches/01_sqlite_wal_cache`: best approach + working reference implementation.
+- `approaches/02_json_snapshot_cache`: lightweight JSON snapshot alternative.
+- `approaches/03_event_log_cache`: append-only event log alternative.
+
+## 3) Recommended architecture (Approach 1)
+
+### Components
+
+1. **Source ingest adapters**: PBAP/USB connectors normalize contacts.
+2. **Sync engine**: full-sync + delta-sync reconciliation.
+3. **Persistent cache store**: SQLite tables and indexes.
+4. **Read API**: provider query endpoints read active cached contacts.
+5. **Retention worker**: purges old soft-deleted rows.
+
+### Data model
+
+**contacts_cache**
+- Composite key: `(source_device, external_contact_id)`
+- Fields: display data, phone/email arrays (JSON), version, timestamps, soft-delete flag.
+
+**sync_state**
+- Per source: `last_full_sync_ms`, `last_sync_token`, `cache_schema_version`.
+
+### Sync correctness
+
+- Full sync: upsert incoming + mark missing local rows as deleted.
+- Delta sync: upsert changes + apply explicit deletions.
+- Conflict guard: reject lower `source_version` updates (`stale_ignored`).
+
+## 4) Implementation steps for ContactsProvider changes
+
+1. Add new cache tables/indexes in provider DB helper.
+2. Add internal provider URI for synced-cache reads/writes.
+3. Implement transactional upsert/delete logic in sync path.
+4. Add sync-state token handling.
+5. Add boot/reconnect behavior to serve cache immediately.
+6. Add retention job to purge old soft-deleted rows.
+7. Add metrics for insert/update/delete/stale counts.
+
+See detailed patch mapping:
+- `approaches/01_sqlite_wal_cache/aosp_patch/CONTACTS_PROVIDER_PATCH_PLAN.md`
+
+## 5) Migration plan for existing users
+
+### Upgrade flow
+
+1. Bump DB schema version and create tables in one migration transaction.
+2. Initialize sync state lazily for each paired source.
+3. Trigger background full sync after upgrade.
+4. Keep legacy fallback path during rollout window.
+
+### Failure handling
+
+- Migration failure: fallback to in-memory path + retry next boot.
+- Corrupt cache: reset cache tables and request full sync.
+
+## 6) Performance strategy
+
+1. Enable SQLite WAL mode for concurrent read/write.
+2. Batch all sync writes in one transaction.
+3. Use indexed queries (`source_device`, `deleted`, `display_name`).
+4. Use temp tables for full-sync diff (avoid huge `IN (...)` clauses).
+5. Keep read limits/pagination for UI lists.
+6. Soft-delete first, hard-purge asynchronously.
+
+## 7) Security and privacy
+
+1. Restrict provider URIs with permission + UID checks.
+2. Rely on Android encrypted userdata (FBE).
+3. Minimize log data and redact phone/email values.
+4. Keep telemetry aggregate-only (counts, timings, no raw PII).
+5. Support optional stronger encryption-at-rest for strict OEM policy variants.
+
+## 8) Working implementation included in repo (AAOS-target Java)
+
+### Core code
+
+- `approaches/01_sqlite_wal_cache/src/main/java/com/autotech/aaos/contactscache/core/model`
+- `approaches/01_sqlite_wal_cache/src/main/java/com/autotech/aaos/contactscache/core/sync/ContactSyncEngine.java`
+- `approaches/01_sqlite_wal_cache/src/main/java/com/autotech/aaos/contactscache/core/store/ContactsCacheStore.java`
+- `approaches/01_sqlite_wal_cache/src/main/java/com/autotech/aaos/contactscache/android/SqliteContactsCacheStore.java`
+- `approaches/01_sqlite_wal_cache/src/main/java/com/autotech/aaos/contactscache/android/ContactsCacheDatabaseHelper.java`
+
+### Demo and tests
+
+- `approaches/01_sqlite_wal_cache/src/main/java/com/autotech/aaos/contactscache/demo/DemoMain.java`
+- `approaches/01_sqlite_wal_cache/src/test/java/com/autotech/aaos/contactscache/core/ContactSyncEngineTestRunner.java`
+- `approaches/01_sqlite_wal_cache/run_jvm_tests.sh`
+- `approaches/01_sqlite_wal_cache/instrumentation-tests`
+
+### What is validated by tests
+
+- Full sync can upsert and delete missing contacts when snapshot is complete.
+- Partial snapshot mode prevents unsafe mass deletions.
+- Stale/older updates are ignored.
+- Sync sequence regressions are rejected.
+- Delta sync resolves upsert/delete conflicts safely.
+- Duplicate source IDs resolve to newest version.
+- Multi-device isolation and normalization/limits are enforced.
+- Android runtime SQLite persistence/migration and UID access enforcement are covered by instrumentation tests.
+
+## 9) Detailed best-approach study
+
+Deep-dive design and tradeoff analysis:
+- `approaches/01_sqlite_wal_cache/BEST_APPROACH_STUDY.md`
+- `approaches/01_sqlite_wal_cache/PRODUCTION_DEPLOYMENT_GUIDE.md`
+
+## 10) Suggested execution roadmap (AAOS product team)
+
+### Phase 1 (Week 1-2)
+
+- Land schema and sync-engine scaffolding behind feature flag.
+- Build unit tests and synthetic large-phonebook benchmarks.
+
+### Phase 2 (Week 3-4)
+
+- Integrate PBAP/USB source adapters.
+- Add provider permission hardening and telemetry.
+- Validate reboot/disconnect recovery.
+
+### Phase 3 (Week 5-6)
+
+- Dogfood rollout on internal fleet.
+- Monitor sync latency, crash-free rate, and cache-hit ratio.
+- Enable by default and retain fallback for one release.
+
+## Conclusion
+
+For AAOS infotainment contacts, **SQLite + WAL + sync metadata** is the strongest solution for reliability, performance, and maintainability. It matches Android provider patterns and gives a direct path from prototype to production hardening.

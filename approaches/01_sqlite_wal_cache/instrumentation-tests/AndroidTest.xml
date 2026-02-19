@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration description="AAOS contacts cache instrumentation tests">
+    <option name="test-suite-tag" value="general-tests" />
+    <option name="test-suite-tag" value="automotive-tests" />
+    <option name="config-descriptor:metadata" key="component" value="aaos-contacts-cache" />
+    <option name="config-descriptor:metadata" key="module" value="ContactsCacheIntegrationTests" />
+
+    <target_preparer class="com.android.tradefed.targetprep.suite.SuiteApkInstaller">
+        <option name="cleanup-apks" value="true" />
+        <option name="test-file-name" value="ContactsCacheIntegrationTests.apk" />
+    </target_preparer>
+
+    <test class="com.android.tradefed.testtype.AndroidJUnitTest">
+        <option name="package" value="com.autotech.aaos.contactscache.integration" />
+        <option name="runner" value="androidx.test.runner.AndroidJUnitRunner" />
+    </test>
+</configuration>

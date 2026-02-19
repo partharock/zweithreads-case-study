@@ -1,0 +1,25 @@
+// Actual AOSP module definition for these instrumentation tests.
+// Run with: atest ContactsCacheIntegrationTests
+
+android_test {
+    name: "ContactsCacheIntegrationTests",
+    manifest: "src/main/AndroidManifest.xml",
+    test_config: "AndroidTest.xml",
+    srcs: [
+        "src/androidTest/java/**/*.java",
+        "../src/main/java/com/autotech/aaos/contactscache/core/**/*.java",
+        "../src/main/java/com/autotech/aaos/contactscache/android/**/*.java",
+    ],
+    static_libs: [
+        "androidx.test.ext.junit",
+        "androidx.test.runner",
+        "androidx.test.rules",
+        "androidx.test.core",
+    ],
+    sdk_version: "test_current",
+    min_sdk_version: "31",
+    test_suites: [
+        "general-tests",
+        "automotive-tests",
+    ],
+}
