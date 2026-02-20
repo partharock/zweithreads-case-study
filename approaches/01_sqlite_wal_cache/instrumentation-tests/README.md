@@ -28,7 +28,9 @@ This folder provides Android runtime integration tests for the AAOS cache implem
 
 ```bash
 cd approaches/01_sqlite_wal_cache/instrumentation-tests
-gradle connectedDebugAndroidTest
+ANDROID_SDK_ROOT="$HOME/Library/Android/sdk" \
+GRADLE_USER_HOME="$PWD/.gradle-home" \
+gradle connectedDebugAndroidTest --no-daemon
 ```
 
 ## How to run in AAOS/AOSP CI
@@ -41,4 +43,5 @@ gradle connectedDebugAndroidTest
 ## Notes
 
 - These are instrumentation tests; they must run on Android runtime (emulator or device).
+- `connectedDebugAndroidTest` fails with `No connected devices!` until an emulator/device is available via `adb`.
 - This repo environment may not include working Android SDK/Gradle runtime, so local execution can be limited.

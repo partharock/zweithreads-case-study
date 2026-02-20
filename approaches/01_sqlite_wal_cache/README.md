@@ -34,6 +34,22 @@ This is the production-target approach for AAOS ContactsProvider integrations.
 ./approaches/01_sqlite_wal_cache/run_jvm_tests.sh
 ```
 
+## Run complete validation
+
+```bash
+./approaches/01_sqlite_wal_cache/run_all_checks.sh
+```
+
+- Runs JVM core tests.
+- Runs Android source compile check against `android.jar`.
+- Skips connected instrumentation tests by default.
+
+To include connected instrumentation tests:
+
+```bash
+RUN_CONNECTED_TESTS=1 ./approaches/01_sqlite_wal_cache/run_all_checks.sh
+```
+
 ## Notes for AAOS deployment
 
 - Deploy `android` package classes into your AOSP/AAOS module (`ContactsProvider` integration path).
